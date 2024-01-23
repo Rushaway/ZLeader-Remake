@@ -11,7 +11,6 @@
 #include "utilshelper.inc"
 
 #undef REQUIRE_PLUGIN
-#tryinclude <Spectate>
 #tryinclude <vip_core>
 #tryinclude <ccc>
 #define REQUIRE_PLUGIN
@@ -178,7 +177,7 @@ public void OnPluginStart() {
 
 	/* HOOK EVENTS & RADIO */
 	AddTempEntHook("Player Decal", HookDecal);
-	HookEvent("player_team", OnPlayerTeam, EventHookMode_Pre);
+	HookEvent("player_team", OnPlayerTeam, EventHookMode_Post);
 	HookEvent("player_death", OnPlayerDeath, EventHookMode_Post);
 	HookEvent("round_end", OnRoundEnd);
 	HookRadio();
@@ -537,28 +536,15 @@ public void OnClientDisconnect(int client) {
 
 public void OnPlayerTeam(Event event, const char[] name, bool dontBroadcast) {
 	int client = GetClientOfUserId(event.GetInt("userid"));
-	int team = event.GetInt("team");
-
-	if (team != CS_TEAM_SPECTATOR)
-		return;
-
+	// We need to perform OnPlayerTeam after OnPlayerDeath, to check if leader moved to spec
 	if (IsClientLeader(client))
-		RemoveLeader(client, R_SPECTATOR, true);
-
-	g_bSuicideSpectate[client] = false;
+		CreateTimer(0.2, Timer_OnTeamChange, client, TIMER_FLAG_NO_MAPCHANGE);
 }
 
 public void OnPlayerDeath(Event event, const char[] name, bool dontBroadcast) {
 	int client = GetClientOfUserId(event.GetInt("userid"));
-
-	if (!IsClientLeader(client) || g_bSuicideSpectate[client])
-		return;
-
-	RemoveLeader(client, R_DIED, true);
-}
-
-public void Spectate_OnCommitSuicide(int client) {
-	g_bSuicideSpectate[client] = true;
+	if (IsClientLeader(client))
+		CreateTimer(0.1, Timer_OnDeath, client, TIMER_FLAG_NO_MAPCHANGE);
 }
 
 public void ZR_OnClientInfected(int client, int attacker, bool motherinfect, bool override, bool respawn) {
@@ -568,11 +554,12 @@ public void ZR_OnClientInfected(int client, int attacker, bool motherinfect, boo
 
 public void OnRoundEnd(Event event, const char[] name, bool dontBroadcast) {
 	// We create timer for don't insta remove leader (usefull for API)
-	CreateTimer(0.3, RoundEndClean, INVALID_HANDLE, TIMER_FLAG_NO_MAPCHANGE);
+	CreateTimer(0.3, Timer_RoundEndClean, INVALID_HANDLE, TIMER_FLAG_NO_MAPCHANGE);
 	KillAllBeacons();
 	KillAllPingsBeam();
 }
-public Action RoundEndClean(Handle timer) {
+
+public Action Timer_RoundEndClean(Handle timer) {
 	for (int i = 1; i <= MaxClients; i++) {
 		if (IsValidClient(i))
 			Reset_ClientNextVote(i);
@@ -581,6 +568,31 @@ public Action RoundEndClean(Handle timer) {
 	}
 
 	return Plugin_Handled;
+}
+
+public Action Timer_OnDeath(Handle timer, int client) {
+	if (!client)
+		return Plugin_Stop;
+
+	if (GetClientTeam(client) <= CS_TEAM_SPECTATOR)
+		g_bSuicideSpectate[client] = true;
+
+	if (IsClientLeader(client) && !g_bSuicideSpectate[client])
+		RemoveLeader(client, R_DIED, true);
+
+	return Plugin_Continue;
+}
+
+public Action Timer_OnTeamChange(Handle timer, int client) {
+	if (!client)
+		return Plugin_Stop;
+
+	if (IsClientLeader(client) && g_bSuicideSpectate[client]) {
+		RemoveLeader(client, R_SPECTATOR, true);
+		g_bSuicideSpectate[client] = false;
+	}
+
+	return Plugin_Continue;
 }
 
 /* =========================================================================
