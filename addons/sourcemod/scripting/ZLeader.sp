@@ -1225,6 +1225,11 @@ public Action Timer_Beacon(Handle timer, any value) {
 	}
 
 	int slot = GetLeaderIndexWithLeaderSlot(g_iClientLeaderSlot[client]);
+	if (slot == -1) {
+		KillBeacon(client);
+		return Plugin_Stop;
+	}
+
 	float vec[3];
 	GetClientAbsOrigin(client, vec);
 	vec[2] += 10;
@@ -1329,6 +1334,11 @@ public Action Timer_PingBeamRing(Handle timer, any value) {
 	}
 
 	int slot = GetLeaderIndexWithLeaderSlot(g_iClientLeaderSlot[client]);
+	if (slot == -1) {
+		KillPingBeam(client);
+		return Plugin_Stop;
+	}
+
 	float vec[3];
 	vec[0] = g_pos[0];
 	vec[1] = g_pos[1];
